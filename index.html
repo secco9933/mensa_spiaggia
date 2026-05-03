@@ -211,7 +211,10 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
       <div class="map-text">In attesa della posizione del rider...</div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Il rider deve attivare la geolocalizzazione dal suo dispositivo</div>
     </div>
-    <div id="leaflet-map"></div>
+    <div style="position:relative;">
+      <div id="leaflet-map"></div>
+      <button id="follow-btn" onclick="toggleFollow()" style="position:absolute;bottom:16px;right:16px;z-index:1000;background:#7d2529;color:white;border:none;border-radius:20px;padding:8px 16px;font-size:13px;font-family:inherit;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:none;">🎯 Segui rider</button>
+    </div>
     <div id="geo-status" style="font-size:13px;color:var(--text-muted);padding:8px 0;"></div>
   </div>
 
@@ -319,6 +322,7 @@ function subscribeToOrders(date) {
 let leafletMap = null;
 let riderMarker = null;
 let riderCircle = null;
+let followRider = true;
 
 function initMap(lat, lng) {
   const mapEl = document.getElementById('leaflet-map');
@@ -335,13 +339,39 @@ function initMap(lat, lng) {
     });
     riderMarker = L.marker([lat, lng], { icon }).addTo(leafletMap);
     riderCircle = L.circle([lat, lng], { radius: 30, color: '#7d2529', fillColor: '#7d2529', fillOpacity: 0.12, weight: 1 }).addTo(leafletMap);
+    leafletMap.on('dragstart', () => {
+      followRider = false;
+      updateFollowBtn();
+    });
     setTimeout(() => leafletMap.invalidateSize(), 300);
   } else {
     riderMarker.setLatLng([lat, lng]);
     riderCircle.setLatLng([lat, lng]);
-    leafletMap.panTo([lat, lng], { animate: true, duration: 1 });
+    if (followRider) leafletMap.panTo([lat, lng], { animate: true, duration: 1 });
   }
 }
+
+function updateFollowBtn() {
+  const btn = document.getElementById('follow-btn');
+  if (!btn) return;
+  if (followRider) {
+    btn.style.background = '#7d2529';
+    btn.style.color = 'white';
+    btn.textContent = '🎯 Segui rider';
+  } else {
+    btn.style.background = 'white';
+    btn.style.color = '#7d2529';
+    btn.textContent = '🎯 Segui rider';
+  }
+}
+
+window.toggleFollow = function() {
+  followRider = !followRider;
+  updateFollowBtn();
+  if (followRider && riderMarker) {
+    leafletMap.panTo(riderMarker.getLatLng(), { animate: true, duration: 0.8 });
+  }
+};
 
 function subscribeToGeo() {
   if (unsubscribeGeo) unsubscribeGeo();
@@ -353,9 +383,10 @@ function subscribeToGeo() {
     const lng = parseFloat(data.lng);
     const t = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString('it-IT') : '';
     initMap(lat, lng);
+    const followBtn = document.getElementById('follow-btn');
+    if (followBtn) followBtn.style.display = 'block';
     if (riderMarker) riderMarker.bindPopup(`<b>Rider</b><br>${lat.toFixed(5)}, ${lng.toFixed(5)}<br><small>Aggiornato alle ${t}</small>`);
-    document.getElementById('geo-dot').classList.add('active');
-    document.getElementById('geo-text').textContent = 'Rider localizzato';
+    document.getElementById('geo-dot') && (document.getElementById('geo-dot').classList.add('active'));
     document.getElementById('geo-status').textContent = t ? 'Posizione aggiornata alle ' + t : '';
   });
 }
