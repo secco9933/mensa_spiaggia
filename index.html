@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Spiaggia Express</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #7d2529;
+  --primary-light: #a33035;
+  --sand: #d5cdbc;
+  --sand-light: #ebe7df;
+  --sand-dark: #b8b0a0;
+  --white: #fff;
+  --text: #1a1210;
+  --text-muted: #6b5e58;
+  --border: rgba(125,37,41,0.15);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+html, body { height: 100%; }
+body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(--text); }
+
+.app { display: flex; flex-direction: column; min-height: 100vh; max-width: 900px; margin: 0 auto; }
+
+.header {
+  background: var(--primary); color: white;
+  padding: 0 1.5rem; display: flex; align-items: center;
+  justify-content: space-between; height: 56px;
+  position: sticky; top: 0; z-index: 100;
+}
+.header-title { font-size: 18px; font-weight: 400; letter-spacing: 0.5px; }
+.header-subtitle { font-size: 11px; opacity: 0.75; letter-spacing: 1px; text-transform: uppercase; }
+.sync-indicator { font-size: 11px; opacity: 0.8; display: flex; align-items: center; gap: 6px; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+.sync-dot.syncing { background: #facc15; animation: pulse 1s infinite; }
+.sync-dot.error { background: #ef4444; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.nav { display: flex; background: var(--white); border-bottom: 1px solid var(--border); position: sticky; top: 56px; z-index: 99; }
+.nav-btn { flex: 1; padding: 14px 8px; border: none; background: transparent; font-size: 12px; font-family: inherit; color: var(--text-muted); cursor: pointer; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.nav-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+.view { display: none; padding: 1.5rem 1rem; }
+.view.active { display: block; }
+
+.date-bar { display: flex; align-items: center; justify-content: space-between; background: var(--white); border-radius: var(--radius); padding: 12px 16px; border: 1px solid var(--border); margin-bottom: 1rem; }
+.date-label { font-size: 13px; color: var(--text-muted); }
+.date-val { font-size: 15px; font-weight: 600; color: var(--primary); }
+
+.slot { margin-bottom: 12px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--white); }
+.slot-header { background: var(--primary); color: white; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; }
+.slot-time { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+.slot-count { font-size: 12px; opacity: 0.8; }
+.slot-add { background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
+.slot-add:hover { background: rgba(255,255,255,0.35); }
+
+.order-list { padding: 8px; }
+.order-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 6px; background: var(--sand-light); position: relative; transition: opacity 0.2s; }
+.order-item.dragging { opacity: 0.4; }
+.order-item.drag-over { border: 2px dashed var(--primary); background: rgba(125,37,41,0.05); }
+.order-num { width: 24px; height: 24px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.order-info { flex: 1; }
+.order-place { font-size: 14px; font-weight: 600; color: var(--text); }
+.order-amount { font-size: 13px; color: var(--primary); font-weight: 600; margin-top: 2px; }
+.order-actions { display: flex; gap: 4px; }
+.btn-icon { background: transparent; border: 1px solid var(--border); border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; transition: background 0.15s; }
+.btn-icon:hover { background: var(--sand); }
+.btn-icon.del:hover { background: #fde8e8; border-color: #e24b4a; }
+.drag-handle { cursor: grab; color: var(--text-muted); font-size: 16px; padding: 0 2px; }
+
+.empty-slot { padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 500; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--white); border-radius: var(--radius); padding: 1.5rem; width: 90%; max-width: 380px; }
+.modal-title { font-size: 17px; font-weight: 600; color: var(--primary); margin-bottom: 1rem; }
+.form-group { margin-bottom: 14px; }
+.form-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
+.form-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; background: var(--sand-light); color: var(--text); outline: none; }
+.form-input:focus { border-color: var(--primary); background: white; }
+.modal-actions { display: flex; gap: 10px; margin-top: 1.25rem; }
+.btn-primary { flex: 1; background: var(--primary); color: white; border: none; border-radius: var(--radius-sm); padding: 12px; font-size: 14px; font-family: inherit; cursor: pointer; font-weight: 600; }
+.btn-primary:hover { background: var(--primary-light); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-cancel { flex: 1; background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; font-size: 14px; font-family: inherit; cursor: pointer; }
+
+.rider-header { background: var(--primary); color: white; border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1rem; }
+.rider-header h2 { font-size: 16px; font-weight: 400; letter-spacing: 0.5px; margin-bottom: 4px; }
+.rider-header p { font-size: 12px; opacity: 0.75; }
+.rider-slot { margin-bottom: 16px; }
+.rider-slot-time { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; padding: 0 4px; }
+.rider-card { background: var(--white); border-radius: var(--radius); padding: 14px 16px; border-left: 4px solid var(--primary); margin-bottom: 8px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.rider-card-num { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.rider-card-place { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.rider-card-amount { display: inline-block; background: var(--primary); color: white; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+
+.geo-bar { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 1rem; display: flex; align-items: center; gap: 12px; }
+.geo-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+.geo-dot.active { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.2); animation: pulse 2s infinite; }
+.geo-text { flex: 1; font-size: 13px; color: var(--text-muted); }
+.geo-toggle { background: var(--primary); color: white; border: none; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-family: inherit; cursor: pointer; }
+
+.map-placeholder { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-bottom: 1rem; }
+.map-icon { font-size: 40px; }
+.map-text { font-size: 14px; color: var(--text-muted); }
+.map-coords { font-size: 12px; color: var(--primary); font-family: monospace; margin-top: 4px; }
+.map-time { font-size: 11px; color: var(--text-muted); }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+.stat-card { background: var(--white); border-radius: var(--radius-sm); padding: 14px; border: 1px solid var(--border); }
+.stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.stat-val { font-size: 22px; font-weight: 700; color: var(--primary); }
+
+.filter-bar { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+.filter-input { flex: 1; min-width: 120px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit; background: var(--white); color: var(--text); outline: none; }
+.filter-input:focus { border-color: var(--primary); }
+
+.report-table { width: 100%; border-collapse: collapse; background: var(--white); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); font-size: 13px; margin-bottom: 1rem; }
+.report-table th { background: var(--primary); color: white; padding: 10px 12px; text-align: left; font-weight: 500; font-size: 12px; letter-spacing: 0.5px; }
+.report-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.report-table tr:last-child td { border-bottom: none; }
+.report-table tr:hover td { background: var(--sand-light); }
+.amount-cell { font-weight: 600; color: var(--primary); }
+
+.section-title { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 1.25rem 0 0.75rem; }
+.empty-state { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 14px; }
+.loading { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 14px; }
+
+@media (max-width: 480px) {
+  .header { padding: 0 1rem; }
+  .view { padding: 1rem 0.75rem; }
+  .rider-card-place { font-size: 20px; }
+  .btn-icon { width: 32px; height: 32px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <div class="header-title">Spiaggia Express</div>
+      <div class="header-subtitle">Gestione Consegne</div>
+    </div>
+    <div class="sync-indicator">
+      <div class="sync-dot syncing" id="sync-dot"></div>
+      <span id="sync-label">Connessione...</span>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button class="nav-btn active" onclick="showView('admin', this)">Admin</button>
+    <button class="nav-btn" onclick="showView('rider', this)">Rider</button>
+    <button class="nav-btn" onclick="showView('mappa', this)">Mappa</button>
+    <button class="nav-btn" onclick="showView('report', this)">Report</button>
+  </div>
+
+  <div id="view-admin" class="view active">
+    <div class="date-bar">
+      <div>
+        <div class="date-label">Data ordini</div>
+        <div class="date-val" id="admin-date-label"></div>
+      </div>
+      <input type="date" id="admin-date" class="form-input" style="width:auto;" onchange="onDateChange()">
+    </div>
+    <div id="slots-container"><div class="loading">Caricamento...</div></div>
+  </div>
+
+  <div id="view-rider" class="view">
+    <div class="rider-header">
+      <h2>Le tue consegne</h2>
+      <p id="rider-date-label"></p>
+    </div>
+    <div id="rider-slots"><div class="loading">Caricamento...</div></div>
+  </div>
+
+  <div id="view-mappa" class="view">
+    <div class="geo-bar">
+      <div class="geo-dot" id="geo-dot"></div>
+      <div class="geo-text" id="geo-text">Geolocalizzazione non attiva</div>
+      <button class="geo-toggle" id="geo-toggle-btn" onclick="toggleGeo()">Attiva</button>
+    </div>
+    <div class="map-placeholder" id="map-area">
+      <div class="map-icon">🗺️</div>
+      <div class="map-text">Posizione rider non disponibile</div>
+    </div>
+    <div id="geo-status" style="font-size:13px;color:var(--text-muted);padding:8px 0;"></div>
+  </div>
+
+  <div id="view-report" class="view">
+    <div class="filter-bar">
+      <input type="date" id="filter-date" class="filter-input" onchange="renderReport()">
+      <input type="text" id="filter-spiaggia" class="filter-input" placeholder="Filtra per spiaggia..." oninput="renderReport()">
+    </div>
+    <div class="stats-grid" id="report-stats"></div>
+    <div class="section-title">Dettaglio ordini</div>
+    <table class="report-table">
+      <thead><tr><th>Data</th><th>Orario</th><th>Spiaggia / Indirizzo</th><th>Importo</th></tr></thead>
+      <tbody id="report-body"></tbody>
+    </table>
+    <div class="section-title">Riepilogo per spiaggia</div>
+    <table class="report-table">
+      <thead><tr><th>Spiaggia</th><th>Ordini</th><th>Totale</th></tr></thead>
+      <tbody id="report-spiagge"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Nuovo ordine</div>
+    <div class="form-group">
+      <label class="form-label">Spiaggia / Indirizzo</label>
+      <input type="text" class="form-input" id="inp-place" placeholder="es. Spiaggia 42 o Via Roma 5">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Importo (€)</label>
+      <input type="number" class="form-input" id="inp-amount" placeholder="0.00" step="0.01" min="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Annulla</button>
+      <button class="btn-primary" id="save-btn" onclick="saveOrder()">Salva ordine</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, query, where, orderBy, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCyUiDpKNRTrA0DKHl9sNXMN23Oa-akUZY",
+  authDomain: "mensaspiaggia.firebaseapp.com",
+  projectId: "mensaspiaggia",
+  storageBucket: "mensaspiaggia.firebasestorage.app",
+  messagingSenderId: "126759385697",
+  appId: "1:126759385697:web:7f8b9115ce2628f42e4820",
+  measurementId: "G-6F5SH61SPN"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const SLOTS = ['12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00'];
+let orders = [];
+let currentDate = today();
+let currentSlotTime = null;
+let geoActive = false;
+let geoWatcher = null;
+let unsubscribeOrders = null;
+let unsubscribeGeo = null;
+
+function today() {
+  return new Date().toISOString().slice(0,10);
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+function setSyncStatus(status) {
+  const dot = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  dot.className = 'sync-dot';
+  if (status === 'ok') { dot.classList.add(''); label.textContent = 'Sincronizzato'; dot.style.background = '#22c55e'; dot.style.animation = 'none'; }
+  else if (status === 'syncing') { dot.style.background = '#facc15'; dot.style.animation = 'pulse 1s infinite'; label.textContent = 'Sincronizzazione...'; }
+  else { dot.style.background = '#ef4444'; dot.style.animation = 'none'; label.textContent = 'Errore connessione'; }
+}
+
+function subscribeToOrders(date) {
+  if (unsubscribeOrders) unsubscribeOrders();
+  setSyncStatus('syncing');
+  const q = query(collection(db, 'orders'), where('date', '==', date));
+  unsubscribeOrders = onSnapshot(q, snapshot => {
+    orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    orders.sort((a, b) => {
+      if (a.slot !== b.slot) return SLOTS.indexOf(a.slot) - SLOTS.indexOf(b.slot);
+      return (a.order || 0) - (b.order || 0);
+    });
+    setSyncStatus('ok');
+    renderAdmin();
+    renderRider();
+  }, err => {
+    console.error(err);
+    setSyncStatus('error');
+  });
+}
+
+function subscribeToGeo() {
+  if (unsubscribeGeo) unsubscribeGeo();
+  unsubscribeGeo = onSnapshot(doc(db, 'rider', 'location'), snap => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if (!data.lat) return;
+    const mapArea = document.getElementById('map-area');
+    const t = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString('it-IT') : '';
+    mapArea.innerHTML = `
+      <div class="map-icon">📍</div>
+      <div class="map-text" style="color:var(--primary);font-weight:600;">Rider attivo</div>
+      <div class="map-coords">${parseFloat(data.lat).toFixed(5)}, ${parseFloat(data.lng).toFixed(5)}</div>
+      ${t ? `<div class="map-time">Aggiornato alle ${t}</div>` : ''}
+      <a href="https://www.google.com/maps?q=${data.lat},${data.lng}" target="_blank" style="margin-top:8px;font-size:12px;color:var(--primary);">Apri in Google Maps</a>`;
+    document.getElementById('geo-dot').classList.add('active');
+    document.getElementById('geo-text').textContent = 'Rider localizzato';
+  });
+}
+
+window.showView = function(v, btn) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (v === 'report') renderReport();
+};
+
+window.onDateChange = function() {
+  currentDate = document.getElementById('admin-date').value;
+  document.getElementById('admin-date-label').textContent = formatDate(currentDate);
+  subscribeToOrders(currentDate);
+};
+
+function renderAdmin() {
+  const container = document.getElementById('slots-container');
+  container.innerHTML = '';
+  SLOTS.forEach((slot, si) => {
+    const slotOrders = orders.filter(o => o.slot === slot);
+    const div = document.createElement('div');
+    div.className = 'slot';
+    div.innerHTML = `
+      <div class="slot-header">
+        <span class="slot-time">${slot}</span>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="slot-count">${slotOrders.length} ordini</span>
+          <button class="slot-add" onclick="openModal('${slot}')">+ Aggiungi</button>
+        </div>
+      </div>
+      <div class="order-list" id="slot-body-${si}">
+        ${slotOrders.length === 0 ? '<div class="empty-slot">Nessun ordine</div>' : ''}
+        ${slotOrders.map((o, i) => `
+          <div class="order-item" draggable="true" data-id="${o.id}"
+            ondragstart="dragStart(event,'${o.id}')"
+            ondragover="dragOver(event)"
+            ondrop="dropOn(event,'${slot}')"
+            ondragleave="dragLeave(event)">
+            <span class="drag-handle">⠿</span>
+            <div class="order-num">${i+1}</div>
+            <div class="order-info">
+              <div class="order-place">${o.place}</div>
+              <div class="order-amount">€${parseFloat(o.amount).toFixed(2)}</div>
+            </div>
+            <div class="order-actions">
+              <button class="btn-icon" onclick="moveOrder('${o.id}','up')" title="Su">↑</button>
+              <button class="btn-icon" onclick="moveOrder('${o.id}','down')" title="Giù">↓</button>
+              <button class="btn-icon del" onclick="deleteOrder('${o.id}')" title="Elimina">✕</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+    container.appendChild(div);
+  });
+}
+
+function renderRider() {
+  const d = today();
+  document.getElementById('rider-date-label').textContent = formatDate(d);
+  const container = document.getElementById('rider-slots');
+  const todayOrders = orders.filter(o => o.date === d);
+  container.innerHTML = '';
+  let found = false;
+  SLOTS.forEach(slot => {
+    const slotOrds = todayOrders.filter(o => o.slot === slot);
+    if (slotOrds.length === 0) return;
+    found = true;
+    const sec = document.createElement('div');
+    sec.className = 'rider-slot';
+    sec.innerHTML = `<div class="rider-slot-time">${slot}</div>` +
+      slotOrds.map((o,i) => `
+        <div class="rider-card">
+          <div class="rider-card-num">Consegna ${i+1}</div>
+          <div class="rider-card-place">${o.place}</div>
+          <span class="rider-card-amount">€${parseFloat(o.amount).toFixed(2)}</span>
+        </div>`).join('');
+    container.appendChild(sec);
+  });
+  if (!found) container.innerHTML = '<div class="empty-state">Nessuna consegna per oggi</div>';
+}
+
+async function renderReport() {
+  const filterDate = document.getElementById('filter-date').value;
+  const filterSpiaggia = document.getElementById('filter-spiaggia').value.toLowerCase().trim();
+  setSyncStatus('syncing');
+  try {
+    const snapshot = await getDocs(collection(db, 'orders'));
+    let all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (filterDate) all = all.filter(o => o.date === filterDate);
+    if (filterSpiaggia) all = all.filter(o => o.place.toLowerCase().includes(filterSpiaggia));
+    all.sort((a,b) => a.date > b.date ? -1 : 1);
+    setSyncStatus('ok');
+    const total = all.reduce((s,o) => s + parseFloat(o.amount||0), 0);
+    document.getElementById('report-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Ordini</div><div class="stat-val">${all.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Totale</div><div class="stat-val">€${total.toFixed(2)}</div></div>`;
+    const tbody = document.getElementById('report-body');
+    tbody.innerHTML = all.length === 0
+      ? '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:1.5rem;">Nessun ordine trovato</td></tr>'
+      : all.map(o => `<tr>
+          <td>${formatDate(o.date)}</td>
+          <td>${o.slot}</td>
+          <td>${o.place}</td>
+          <td class="amount-cell">€${parseFloat(o.amount||0).toFixed(2)}</td>
+        </tr>`).join('');
+    const byBeach = {};
+    all.forEach(o => {
+      if (!byBeach[o.place]) byBeach[o.place] = { count: 0, total: 0 };
+      byBeach[o.place].count++;
+      byBeach[o.place].total += parseFloat(o.amount||0);
+    });
+    const entries = Object.entries(byBeach).sort((a,b) => b[1].total - a[1].total);
+    document.getElementById('report-spiagge').innerHTML = entries.length === 0
+      ? '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:1.5rem;">Nessun dato</td></tr>'
+      : entries.map(([pl,d]) => `<tr><td>${pl}</td><td>${d.count}</td><td class="amount-cell">€${d.total.toFixed(2)}</td></tr>`).join('');
+  } catch(e) { setSyncStatus('error'); }
+}
+
+window.openModal = function(slot) {
+  currentSlotTime = slot;
+  document.getElementById('modal-title').textContent = `Nuovo ordine — ${slot}`;
+  document.getElementById('inp-place').value = '';
+  document.getElementById('inp-amount').value = '';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('inp-place').focus(), 100);
+};
+
+window.closeModal = function() { document.getElementById('modal').classList.remove('open'); };
+
+window.saveOrder = async function() {
+  const place = document.getElementById('inp-place').value.trim();
+  const amount = parseFloat(document.getElementById('inp-amount').value);
+  if (!place || isNaN(amount) || amount < 0) { alert('Compila tutti i campi correttamente.'); return; }
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.textContent = 'Salvataggio...';
+  const slotOrds = orders.filter(o => o.slot === currentSlotTime);
+  try {
+    await addDoc(collection(db, 'orders'), {
+      date: currentDate, slot: currentSlotTime,
+      place, amount, order: slotOrds.length,
+      createdAt: new Date().toISOString()
+    });
+    closeModal();
+  } catch(e) { alert('Errore nel salvataggio. Riprova.'); }
+  btn.disabled = false; btn.textContent = 'Salva ordine';
+};
+
+window.deleteOrder = async function(id) {
+  if (!confirm('Eliminare questo ordine?')) return;
+  try { await deleteDoc(doc(db, 'orders', id)); } catch(e) { alert('Errore eliminazione.'); }
+};
+
+window.moveOrder = async function(id, dir) {
+  const o = orders.find(x => x.id === id);
+  if (!o) return;
+  const slotOrds = orders.filter(x => x.date === o.date && x.slot === o.slot);
+  const idx = slotOrds.findIndex(x => x.id === id);
+  if (dir === 'up' && idx === 0) return;
+  if (dir === 'down' && idx === slotOrds.length - 1) return;
+  const swap = slotOrds[dir === 'up' ? idx - 1 : idx + 1];
+  try {
+    await updateDoc(doc(db, 'orders', id), { order: swap.order ?? (dir === 'up' ? idx-1 : idx+1) });
+    await updateDoc(doc(db, 'orders', swap.id), { order: o.order ?? idx });
+  } catch(e) { alert('Errore riordinamento.'); }
+};
+
+let dragId = null;
+window.dragStart = function(e, id) { dragId = id; e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); };
+window.dragOver = function(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); };
+window.dragLeave = function(e) { e.currentTarget.classList.remove('drag-over'); };
+window.dropOn = async function(e, slot) {
+  e.preventDefault();
+  document.querySelectorAll('.order-item').forEach(el => el.classList.remove('drag-over','dragging'));
+  if (!dragId) return;
+  const targetId = e.currentTarget.dataset.id;
+  if (!targetId || dragId === targetId) return;
+  const fromO = orders.find(x => x.id === dragId);
+  const toO = orders.find(x => x.id === targetId);
+  if (!fromO || !toO) return;
+  const slotOrds = orders.filter(x => x.date === currentDate && x.slot === slot);
+  const fromIdx = slotOrds.findIndex(x => x.id === dragId);
+  const toIdx = slotOrds.findIndex(x => x.id === targetId);
+  const reordered = [...slotOrds];
+  const [moved] = reordered.splice(fromIdx, 1);
+  reordered.splice(toIdx, 0, moved);
+  try {
+    for (let i = 0; i < reordered.length; i++) {
+      await updateDoc(doc(db, 'orders', reordered[i].id), { order: i });
+    }
+  } catch(e) { alert('Errore riordinamento.'); }
+};
+
+window.toggleGeo = async function() {
+  if (!geoActive) {
+    if (!navigator.geolocation) { alert('Geolocalizzazione non supportata.'); return; }
+    geoWatcher = navigator.geolocation.watchPosition(async pos => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      try {
+        await setDoc(doc(db, 'rider', 'location'), {
+          lat, lng, updatedAt: new Date().toISOString()
+        });
+      } catch(e) {}
+      document.getElementById('geo-dot').classList.add('active');
+      document.getElementById('geo-text').textContent = 'Posizione condivisa';
+      document.getElementById('geo-toggle-btn').textContent = 'Disattiva';
+      document.getElementById('geo-status').textContent = 'Aggiornato alle ' + new Date().toLocaleTimeString('it-IT');
+    }, err => {
+      document.getElementById('geo-text').textContent = 'Errore: ' + err.message;
+    }, { enableHighAccuracy: true, maximumAge: 10000 });
+    geoActive = true;
+  } else {
+    if (geoWatcher) navigator.geolocation.clearWatch(geoWatcher);
+    geoActive = false;
+    document.getElementById('geo-dot').classList.remove('active');
+    document.getElementById('geo-text').textContent = 'Geolocalizzazione non attiva';
+    document.getElementById('geo-toggle-btn').textContent = 'Attiva';
+    document.getElementById('map-area').innerHTML = `<div class="map-icon">🗺️</div><div class="map-text">Posizione rider non disponibile</div>`;
+    document.getElementById('geo-status').textContent = '';
+  }
+};
+
+// Init
+document.getElementById('admin-date').value = currentDate;
+document.getElementById('admin-date-label').textContent = formatDate(currentDate);
+document.getElementById('filter-date').value = currentDate;
+document.getElementById('rider-date-label').textContent = formatDate(today());
+subscribeToOrders(currentDate);
+subscribeToGeo();
+</script>
+</body>
+</html>
