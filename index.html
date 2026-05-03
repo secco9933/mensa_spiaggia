@@ -279,7 +279,7 @@ let currentSlotTime = null;
 let geoActive = false;
 let geoWatcher = null;
 let unsubscribeOrders = null;
-let unsubscribeGeo = null;
+let unsubscribeGeo = null; // legacy
 
 function today() {
   return new Date().toISOString().slice(0,10);
@@ -373,22 +373,43 @@ window.toggleFollow = function() {
   }
 };
 
-function subscribeToGeo() {
-  if (unsubscribeGeo) unsubscribeGeo();
-  unsubscribeGeo = onSnapshot(doc(db, 'rider', 'location'), snap => {
-    if (!snap.exists()) return;
-    const data = snap.data();
-    if (!data.lat) return;
-    const lat = parseFloat(data.lat);
-    const lng = parseFloat(data.lng);
-    const t = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString('it-IT') : '';
+const TRACCAR_URL = 'https://demo3.traccar.org/api';
+const TRACCAR_AUTH = 'c2VjY285OTMzQGdtYWlsLmNvbTpIeXBlY29vazk5';
+const TRACCAR_DEVICE_ID = 8489;
+let traccarInterval = null;
+
+async function fetchRiderPosition() {
+  try {
+    const res = await fetch(`${TRACCAR_URL}/positions?deviceId=${TRACCAR_DEVICE_ID}`, {
+      headers: { 'Authorization': `Basic ${TRACCAR_AUTH}` }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data || data.length === 0) return;
+    const pos = data[0];
+    const lat = parseFloat(pos.latitude);
+    const lng = parseFloat(pos.longitude);
+    const battery = pos.attributes && pos.attributes.batteryLevel ? pos.attributes.batteryLevel : null;
+    const t = pos.deviceTime ? new Date(pos.deviceTime).toLocaleTimeString('it-IT') : '';
     initMap(lat, lng);
     const followBtn = document.getElementById('follow-btn');
     if (followBtn) followBtn.style.display = 'block';
-    if (riderMarker) riderMarker.bindPopup(`<b>Rider</b><br>${lat.toFixed(5)}, ${lng.toFixed(5)}<br><small>Aggiornato alle ${t}</small>`);
-    document.getElementById('geo-dot') && (document.getElementById('geo-dot').classList.add('active'));
-    document.getElementById('geo-status').textContent = t ? 'Posizione aggiornata alle ' + t : '';
-  });
+    if (riderMarker) riderMarker.bindPopup(
+      `<b>🛵 Rider</b><br>
+      ${battery !== null ? `🔋 Batteria: ${battery}%<br>` : ''}
+      <small>Aggiornato alle ${t}</small>`
+    );
+    const statusEl = document.getElementById('geo-status');
+    if (statusEl) statusEl.textContent = `Posizione aggiornata alle ${t}${battery !== null ? ' — Batteria rider: ' + battery + '%' : ''}`;
+  } catch(e) {
+    console.error('Traccar fetch error:', e);
+  }
+}
+
+function subscribeToGeo() {
+  if (traccarInterval) clearInterval(traccarInterval);
+  fetchRiderPosition();
+  traccarInterval = setInterval(fetchRiderPosition, 15000);
 }
 
 window.showView = function(v, btn) {
