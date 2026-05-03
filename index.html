@@ -161,7 +161,7 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
 <body>
-<div class="app" style="display:none;">
+<div class="app" id="main-app">
   <div class="header">
     <div>
       <div class="header-title">Spiaggia Express</div>
@@ -197,19 +197,19 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
       <h2>Le tue consegne</h2>
       <p id="rider-date-label"></p>
     </div>
+    <div class="geo-bar" id="rider-geo-bar">
+      <div class="geo-dot" id="rider-geo-dot"></div>
+      <div class="geo-text" id="rider-geo-text">Condivisione posizione non attiva</div>
+      <button class="geo-toggle" id="rider-geo-btn" onclick="toggleGeo()">Attiva</button>
+    </div>
     <div id="rider-slots"><div class="loading">Caricamento...</div></div>
   </div>
 
   <div id="view-mappa" class="view">
-    <div class="geo-bar">
-      <div class="geo-dot" id="geo-dot"></div>
-      <div class="geo-text" id="geo-text">Geolocalizzazione non attiva</div>
-      <button class="geo-toggle" id="geo-toggle-btn" onclick="toggleGeo()">Attiva</button>
-    </div>
     <div class="map-placeholder" id="map-area">
       <div class="map-icon">🗺️</div>
       <div class="map-text">In attesa della posizione del rider...</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Il rider deve attivare la geolocalizzazione</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Il rider deve attivare la geolocalizzazione dal suo dispositivo</div>
     </div>
     <div id="leaflet-map"></div>
     <div id="geo-status" style="font-size:13px;color:var(--text-muted);padding:8px 0;"></div>
@@ -322,26 +322,20 @@ let riderCircle = null;
 
 function initMap(lat, lng) {
   const mapEl = document.getElementById('leaflet-map');
+  mapEl.style.display = 'block';
+  document.getElementById('map-area').style.display = 'none';
   if (!leafletMap) {
-    mapEl.style.display = 'block';
-    document.getElementById('map-area').style.display = 'none';
     leafletMap = L.map('leaflet-map', { zoomControl: true, attributionControl: false }).setView([lat, lng], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(leafletMap);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(leafletMap);
     const icon = L.divIcon({
-      html: `<div style="
-        width:36px;height:36px;border-radius:50%;
-        background:#7d2529;border:3px solid white;
-        box-shadow:0 2px 8px rgba(0,0,0,0.3);
-        display:flex;align-items:center;justify-content:center;
-        font-size:18px;">🛵</div>`,
+      html: '<div style="width:40px;height:40px;border-radius:50%;background:#7d2529;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:20px;">&#128693;</div>',
       className: '',
-      iconSize: [36, 36],
-      iconAnchor: [18, 18]
+      iconSize: [40, 40],
+      iconAnchor: [20, 20]
     });
     riderMarker = L.marker([lat, lng], { icon }).addTo(leafletMap);
-    riderCircle = L.circle([lat, lng], { radius: 20, color: '#7d2529', fillColor: '#7d2529', fillOpacity: 0.15, weight: 1 }).addTo(leafletMap);
+    riderCircle = L.circle([lat, lng], { radius: 30, color: '#7d2529', fillColor: '#7d2529', fillOpacity: 0.12, weight: 1 }).addTo(leafletMap);
+    setTimeout(() => leafletMap.invalidateSize(), 300);
   } else {
     riderMarker.setLatLng([lat, lng]);
     riderCircle.setLatLng([lat, lng]);
@@ -372,6 +366,7 @@ window.showView = function(v, btn) {
   document.getElementById('view-'+v).classList.add('active');
   if (btn) btn.classList.add('active');
   if (v === 'report') renderReport();
+  if (v === 'mappa' && leafletMap) setTimeout(() => leafletMap.invalidateSize(), 100);
 };
 
 window.onDateChange = function() {
@@ -557,6 +552,22 @@ window.dropOn = async function(e, slot) {
   } catch(e) { alert('Errore riordinamento.'); }
 };
 
+function setGeoUI(active) {
+  const dot = document.getElementById('rider-geo-dot');
+  const text = document.getElementById('rider-geo-text');
+  const btn = document.getElementById('rider-geo-btn');
+  if (!dot) return;
+  if (active) {
+    dot.classList.add('active');
+    text.textContent = 'Posizione condivisa';
+    btn.textContent = 'Disattiva';
+  } else {
+    dot.classList.remove('active');
+    text.textContent = 'Condivisione posizione non attiva';
+    btn.textContent = 'Attiva';
+  }
+}
+
 window.toggleGeo = async function() {
   if (!geoActive) {
     if (!navigator.geolocation) { alert('Geolocalizzazione non supportata.'); return; }
@@ -568,22 +579,16 @@ window.toggleGeo = async function() {
           lat, lng, updatedAt: new Date().toISOString()
         });
       } catch(e) {}
-      document.getElementById('geo-dot').classList.add('active');
-      document.getElementById('geo-text').textContent = 'Posizione condivisa';
-      document.getElementById('geo-toggle-btn').textContent = 'Disattiva';
-      document.getElementById('geo-status').textContent = 'Aggiornato alle ' + new Date().toLocaleTimeString('it-IT');
+      setGeoUI(true);
     }, err => {
-      document.getElementById('geo-text').textContent = 'Errore: ' + err.message;
+      const text = document.getElementById('rider-geo-text');
+      if (text) text.textContent = 'Errore: ' + err.message;
     }, { enableHighAccuracy: true, maximumAge: 10000 });
     geoActive = true;
   } else {
     if (geoWatcher) navigator.geolocation.clearWatch(geoWatcher);
     geoActive = false;
-    document.getElementById('geo-dot').classList.remove('active');
-    document.getElementById('geo-text').textContent = 'Geolocalizzazione non attiva';
-    document.getElementById('geo-toggle-btn').textContent = 'Attiva';
-    document.getElementById('map-area').innerHTML = `<div class="map-icon">🗺️</div><div class="map-text">Posizione rider non disponibile</div>`;
-    document.getElementById('geo-status').textContent = '';
+    setGeoUI(false);
   }
 };
 
@@ -592,13 +597,20 @@ const PINS = { '0000': 'admin', '1234': 'rider' };
 let currentRole = null;
 
 function checkAuth() {
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
   const saved = localStorage.getItem('se_role');
-  if (saved) { currentRole = saved; applyRole(); return; }
-  showLoginScreen();
+  if (saved) {
+    currentRole = saved;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('main-app').style.display = 'flex';
+    applyRole();
+    return;
+  }
 }
 
 function showLoginScreen() {
-  document.querySelector('.app').style.display = 'none';
+  document.getElementById('main-app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
 }
 
@@ -618,7 +630,7 @@ window.handlePin = function(digit) {
         currentRole = role;
         localStorage.setItem('se_role', role);
         document.getElementById('login-screen').style.display = 'none';
-        document.querySelector('.app').style.display = 'flex';
+        document.getElementById('main-app').style.display = 'flex';
         applyRole();
       } else {
         display.dataset.pin = '';
@@ -643,7 +655,7 @@ window.clearPin = function() {
 window.logout = function() {
   localStorage.removeItem('se_role');
   currentRole = null;
-  document.querySelector('.app').style.display = 'none';
+  document.getElementById('main-app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('pin-display').dataset.pin = '';
   document.getElementById('pin-display').querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled'));
