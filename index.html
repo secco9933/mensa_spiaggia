@@ -265,7 +265,7 @@ function setSyncStatus(status) {
   const dot = document.getElementById('sync-dot');
   const label = document.getElementById('sync-label');
   dot.className = 'sync-dot';
-  if (status === 'ok') { dot.classList.add(''); label.textContent = 'Sincronizzato'; dot.style.background = '#22c55e'; dot.style.animation = 'none'; }
+  if (status === 'ok') { label.textContent = 'Sincronizzato'; dot.style.background = '#22c55e'; dot.style.animation = 'none'; }
   else if (status === 'syncing') { dot.style.background = '#facc15'; dot.style.animation = 'pulse 1s infinite'; label.textContent = 'Sincronizzazione...'; }
   else { dot.style.background = '#ef4444'; dot.style.animation = 'none'; label.textContent = 'Errore connessione'; }
 }
