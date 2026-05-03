@@ -599,10 +599,9 @@ function setGeoUI(active) {
   }
 }
 
-window.toggleGeo = async function() {
-  if (!geoActive) {
-    if (!navigator.geolocation) { alert('Geolocalizzazione non supportata.'); return; }
-    geoWatcher = navigator.geolocation.watchPosition(async pos => {
+async function sendPosition() {
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(async pos => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
       try {
@@ -611,13 +610,24 @@ window.toggleGeo = async function() {
         });
       } catch(e) {}
       setGeoUI(true);
+      resolve();
     }, err => {
       const text = document.getElementById('rider-geo-text');
-      if (text) text.textContent = 'Errore: ' + err.message;
-    }, { enableHighAccuracy: true, maximumAge: 10000 });
+      if (text) text.textContent = 'Errore GPS: ' + err.message;
+      resolve();
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  });
+}
+
+window.toggleGeo = async function() {
+  if (!geoActive) {
+    if (!navigator.geolocation) { alert('Geolocalizzazione non supportata.'); return; }
     geoActive = true;
+    await sendPosition();
+    geoWatcher = setInterval(sendPosition, 15000);
   } else {
-    if (geoWatcher) navigator.geolocation.clearWatch(geoWatcher);
+    clearInterval(geoWatcher);
+    geoWatcher = null;
     geoActive = false;
     setGeoUI(false);
   }
