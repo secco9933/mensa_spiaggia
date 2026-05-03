@@ -102,11 +102,12 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
 .geo-text { flex: 1; font-size: 13px; color: var(--text-muted); }
 .geo-toggle { background: var(--primary); color: white; border: none; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-family: inherit; cursor: pointer; }
 
-.map-placeholder { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-bottom: 1rem; }
+.map-placeholder { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-bottom: 1rem; overflow: hidden; }
 .map-icon { font-size: 40px; }
 .map-text { font-size: 14px; color: var(--text-muted); }
 .map-coords { font-size: 12px; color: var(--primary); font-family: monospace; margin-top: 4px; }
 .map-time { font-size: 11px; color: var(--text-muted); }
+#leaflet-map { width: 100%; height: 340px; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 1rem; display: none; }
 
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
 .stat-card { background: var(--white); border-radius: var(--radius-sm); padding: 14px; border: 1px solid var(--border); }
@@ -134,15 +135,39 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
   .rider-card-place { font-size: 20px; }
   .btn-icon { width: 32px; height: 32px; }
 }
+
+.login-screen {
+  display: none; position: fixed; inset: 0;
+  background: var(--primary);
+  flex-direction: column; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.login-logo { color: white; text-align: center; margin-bottom: 2.5rem; }
+.login-logo h1 { font-size: 28px; font-weight: 400; letter-spacing: 1px; margin-bottom: 4px; }
+.login-logo p { font-size: 12px; opacity: 0.7; letter-spacing: 2px; text-transform: uppercase; }
+.login-box { background: white; border-radius: 20px; padding: 2rem 2rem 1.5rem; width: 280px; }
+.pin-dots { display: flex; justify-content: center; gap: 16px; margin-bottom: 2rem; }
+.pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--primary); transition: background 0.15s; }
+.pin-dot.filled { background: var(--primary); }
+.pin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pin-key { background: var(--sand-light); border: none; border-radius: 12px; height: 56px; font-size: 20px; font-family: inherit; color: var(--text); cursor: pointer; transition: background 0.15s; }
+.pin-key:hover { background: var(--sand); }
+.pin-key:active { background: var(--sand-dark); transform: scale(0.96); }
+.pin-key.clear { font-size: 16px; color: var(--text-muted); }
+.pin-error { color: var(--primary); font-size: 13px; text-align: center; margin-top: 1rem; display: none; font-family: Georgia, serif; }
+.logout-btn { display: none; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); border: none; color: white; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-family: inherit; cursor: pointer; }
+.logout-btn:hover { background: rgba(255,255,255,0.25); }
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
 <body>
-<div class="app">
+<div class="app" style="display:none;">
   <div class="header">
     <div>
       <div class="header-title">Spiaggia Express</div>
       <div class="header-subtitle">Gestione Consegne</div>
     </div>
+    <button class="logout-btn" id="logout-btn" onclick="logout()">Esci</button>
     <div class="sync-indicator">
       <div class="sync-dot syncing" id="sync-dot"></div>
       <span id="sync-label">Connessione...</span>
@@ -183,8 +208,10 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
     </div>
     <div class="map-placeholder" id="map-area">
       <div class="map-icon">🗺️</div>
-      <div class="map-text">Posizione rider non disponibile</div>
+      <div class="map-text">In attesa della posizione del rider...</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Il rider deve attivare la geolocalizzazione</div>
     </div>
+    <div id="leaflet-map"></div>
     <div id="geo-status" style="font-size:13px;color:var(--text-muted);padding:8px 0;"></div>
   </div>
 
@@ -289,22 +316,53 @@ function subscribeToOrders(date) {
   });
 }
 
+let leafletMap = null;
+let riderMarker = null;
+let riderCircle = null;
+
+function initMap(lat, lng) {
+  const mapEl = document.getElementById('leaflet-map');
+  if (!leafletMap) {
+    mapEl.style.display = 'block';
+    document.getElementById('map-area').style.display = 'none';
+    leafletMap = L.map('leaflet-map', { zoomControl: true, attributionControl: false }).setView([lat, lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(leafletMap);
+    const icon = L.divIcon({
+      html: `<div style="
+        width:36px;height:36px;border-radius:50%;
+        background:#7d2529;border:3px solid white;
+        box-shadow:0 2px 8px rgba(0,0,0,0.3);
+        display:flex;align-items:center;justify-content:center;
+        font-size:18px;">🛵</div>`,
+      className: '',
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
+    riderMarker = L.marker([lat, lng], { icon }).addTo(leafletMap);
+    riderCircle = L.circle([lat, lng], { radius: 20, color: '#7d2529', fillColor: '#7d2529', fillOpacity: 0.15, weight: 1 }).addTo(leafletMap);
+  } else {
+    riderMarker.setLatLng([lat, lng]);
+    riderCircle.setLatLng([lat, lng]);
+    leafletMap.panTo([lat, lng], { animate: true, duration: 1 });
+  }
+}
+
 function subscribeToGeo() {
   if (unsubscribeGeo) unsubscribeGeo();
   unsubscribeGeo = onSnapshot(doc(db, 'rider', 'location'), snap => {
     if (!snap.exists()) return;
     const data = snap.data();
     if (!data.lat) return;
-    const mapArea = document.getElementById('map-area');
+    const lat = parseFloat(data.lat);
+    const lng = parseFloat(data.lng);
     const t = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString('it-IT') : '';
-    mapArea.innerHTML = `
-      <div class="map-icon">📍</div>
-      <div class="map-text" style="color:var(--primary);font-weight:600;">Rider attivo</div>
-      <div class="map-coords">${parseFloat(data.lat).toFixed(5)}, ${parseFloat(data.lng).toFixed(5)}</div>
-      ${t ? `<div class="map-time">Aggiornato alle ${t}</div>` : ''}
-      <a href="https://www.google.com/maps?q=${data.lat},${data.lng}" target="_blank" style="margin-top:8px;font-size:12px;color:var(--primary);">Apri in Google Maps</a>`;
+    initMap(lat, lng);
+    if (riderMarker) riderMarker.bindPopup(`<b>Rider</b><br>${lat.toFixed(5)}, ${lng.toFixed(5)}<br><small>Aggiornato alle ${t}</small>`);
     document.getElementById('geo-dot').classList.add('active');
     document.getElementById('geo-text').textContent = 'Rider localizzato';
+    document.getElementById('geo-status').textContent = t ? 'Posizione aggiornata alle ' + t : '';
   });
 }
 
@@ -529,13 +587,117 @@ window.toggleGeo = async function() {
   }
 };
 
-// Init
-document.getElementById('admin-date').value = currentDate;
-document.getElementById('admin-date-label').textContent = formatDate(currentDate);
-document.getElementById('filter-date').value = currentDate;
-document.getElementById('rider-date-label').textContent = formatDate(today());
-subscribeToOrders(currentDate);
-subscribeToGeo();
+// Auth
+const PINS = { '0000': 'admin', '1234': 'rider' };
+let currentRole = null;
+
+function checkAuth() {
+  const saved = localStorage.getItem('se_role');
+  if (saved) { currentRole = saved; applyRole(); return; }
+  showLoginScreen();
+}
+
+function showLoginScreen() {
+  document.querySelector('.app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+window.handlePin = function(digit) {
+  const display = document.getElementById('pin-display');
+  const current = display.dataset.pin || '';
+  if (current.length >= 4) return;
+  const next = current + digit;
+  display.dataset.pin = next;
+  display.querySelectorAll('.pin-dot').forEach((dot, i) => {
+    dot.classList.toggle('filled', i < next.length);
+  });
+  if (next.length === 4) {
+    setTimeout(() => {
+      const role = PINS[next];
+      if (role) {
+        currentRole = role;
+        localStorage.setItem('se_role', role);
+        document.getElementById('login-screen').style.display = 'none';
+        document.querySelector('.app').style.display = 'flex';
+        applyRole();
+      } else {
+        display.dataset.pin = '';
+        display.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled'));
+        const err = document.getElementById('pin-error');
+        err.style.display = 'block';
+        setTimeout(() => err.style.display = 'none', 1500);
+      }
+    }, 200);
+  }
+};
+
+window.clearPin = function() {
+  const display = document.getElementById('pin-display');
+  const current = display.dataset.pin || '';
+  display.dataset.pin = current.slice(0, -1);
+  display.querySelectorAll('.pin-dot').forEach((dot, i) => {
+    dot.classList.toggle('filled', i < display.dataset.pin.length);
+  });
+};
+
+window.logout = function() {
+  localStorage.removeItem('se_role');
+  currentRole = null;
+  document.querySelector('.app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('pin-display').dataset.pin = '';
+  document.getElementById('pin-display').querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled'));
+};
+
+function applyRole() {
+  document.getElementById('admin-date').value = currentDate;
+  document.getElementById('admin-date-label').textContent = formatDate(currentDate);
+  document.getElementById('filter-date').value = currentDate;
+  document.getElementById('rider-date-label').textContent = formatDate(today());
+  if (currentRole === 'rider') {
+    document.querySelectorAll('.nav-btn').forEach(b => b.style.display = 'none');
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-rider').classList.add('active');
+  } else {
+    document.querySelectorAll('.nav-btn').forEach(b => b.style.display = '');
+  }
+  document.getElementById('logout-btn').style.display = 'flex';
+  subscribeToOrders(currentDate);
+  subscribeToGeo();
+}
+
+checkAuth();
 </script>
+
+<div id="login-screen" style="display:flex;position:fixed;inset:0;background:#7d2529;flex-direction:column;align-items:center;justify-content:center;z-index:1000;">
+  <div class="login-logo">
+    <h1>Spiaggia Express</h1>
+    <p>Gestione Consegne</p>
+  </div>
+  <div class="login-box">
+    <div class="pin-dots" id="pin-display" data-pin="">
+      <div class="pin-dot"></div>
+      <div class="pin-dot"></div>
+      <div class="pin-dot"></div>
+      <div class="pin-dot"></div>
+    </div>
+    <div class="pin-grid">
+      <button class="pin-key" onclick="handlePin('1')">1</button>
+      <button class="pin-key" onclick="handlePin('2')">2</button>
+      <button class="pin-key" onclick="handlePin('3')">3</button>
+      <button class="pin-key" onclick="handlePin('4')">4</button>
+      <button class="pin-key" onclick="handlePin('5')">5</button>
+      <button class="pin-key" onclick="handlePin('6')">6</button>
+      <button class="pin-key" onclick="handlePin('7')">7</button>
+      <button class="pin-key" onclick="handlePin('8')">8</button>
+      <button class="pin-key" onclick="handlePin('9')">9</button>
+      <button class="pin-key clear" onclick="clearPin()">&#9003;</button>
+      <button class="pin-key" onclick="handlePin('0')">0</button>
+      <button class="pin-key clear" onclick="clearPin()">&#9003;</button>
+    </div>
+    <div class="pin-error" id="pin-error">PIN non corretto</div>
+  </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
 </html>
