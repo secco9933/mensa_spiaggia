@@ -500,7 +500,7 @@ window.resetFilters = function() {
   renderReport();
 };
 
-async function renderReport() {
+window.renderReport = async function renderReport() {
   const filterDate = document.getElementById('filter-date').value.trim();
   const filterSpiaggia = document.getElementById('filter-spiaggia').value.toLowerCase().trim();
 
