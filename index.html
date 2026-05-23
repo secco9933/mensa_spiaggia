@@ -219,10 +219,28 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
   </div>
 
   <div id="view-report" class="view">
-    <div class="filter-bar">
-      <input type="date" id="filter-date" class="filter-input" onchange="renderReport()">
-      <input type="text" id="filter-spiaggia" class="filter-input" placeholder="Filtra per spiaggia..." oninput="renderReport()">
-      <button class="btn-cancel" style="flex:0;padding:9px 14px;font-size:13px;white-space:nowrap;" onclick="resetFilters()">✕ Reset</button>
+    <div style="margin-bottom:1rem;">
+      <div class="filter-bar" style="margin-bottom:8px;">
+        <div style="display:flex;flex-direction:column;flex:1;gap:4px;">
+          <label style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Dal</label>
+          <input type="date" id="filter-date-from" class="filter-input" style="flex:1;" onchange="renderReport()">
+        </div>
+        <div style="display:flex;flex-direction:column;flex:1;gap:4px;">
+          <label style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Al</label>
+          <input type="date" id="filter-date-to" class="filter-input" style="flex:1;" onchange="renderReport()">
+        </div>
+        <div style="display:flex;flex-direction:column;flex:1;gap:4px;">
+          <label style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Spiaggia</label>
+          <input type="text" id="filter-spiaggia" class="filter-input" placeholder="es. 71 o hotel..." oninput="renderReport()">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-cancel" style="flex:0;padding:6px 12px;font-size:12px;white-space:nowrap;" onclick="setQuickFilter('today')">Oggi</button>
+        <button class="btn-cancel" style="flex:0;padding:6px 12px;font-size:12px;white-space:nowrap;" onclick="setQuickFilter('week')">Questa settimana</button>
+        <button class="btn-cancel" style="flex:0;padding:6px 12px;font-size:12px;white-space:nowrap;" onclick="setQuickFilter('month')">Questo mese</button>
+        <button class="btn-cancel" style="flex:0;padding:6px 12px;font-size:12px;white-space:nowrap;" onclick="setQuickFilter('all')">Tutti</button>
+        <button class="btn-cancel" style="flex:0;padding:6px 12px;font-size:12px;white-space:nowrap;margin-left:auto;" onclick="resetFilters()">✕ Reset</button>
+      </div>
     </div>
     <div class="stats-grid" id="report-stats"></div>
     <div class="section-title">DETTAGLIO ORDINI</div>
@@ -495,34 +513,48 @@ function renderRider() {
 }
 
 window.resetFilters = function() {
-  document.getElementById('filter-date').value = '';
+  document.getElementById('filter-date-from').value = '';
+  document.getElementById('filter-date-to').value = '';
   document.getElementById('filter-spiaggia').value = '';
   renderReport();
 };
 
-window.renderReport = async function renderReport() {
-  const filterDate = document.getElementById('filter-date').value.trim();
-  const filterSpiaggia = document.getElementById('filter-spiaggia').value.toLowerCase().trim();
+window.setQuickFilter = function(type) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  let from = '', to = '';
+  if (type === 'today') {
+    from = to = fmt(now);
+  } else if (type === 'week') {
+    const day = now.getDay() || 7;
+    const mon = new Date(now); mon.setDate(now.getDate() - day + 1);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    from = fmt(mon); to = fmt(sun);
+  } else if (type === 'month') {
+    from = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+    to = fmt(new Date(now.getFullYear(), now.getMonth()+1, 0));
+  } else {
+    from = ''; to = '';
+  }
+  document.getElementById('filter-date-from').value = from;
+  document.getElementById('filter-date-to').value = to;
+  renderReport();
+};
 
-  // Debug log
-  console.log('Filtro data:', filterDate, '| Filtro spiaggia:', filterSpiaggia);
+window.renderReport = async function renderReport() {
+  const filterFrom = document.getElementById('filter-date-from').value.trim();
+  const filterTo = document.getElementById('filter-date-to').value.trim();
+  const filterSpiaggia = document.getElementById('filter-spiaggia').value.toLowerCase().trim();
 
   setSyncStatus('syncing');
   try {
     const snapshot = await getDocs(collection(db, 'orders'));
     let all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    console.log('Totale ordini:', all.length, '| Esempi date:', all.slice(0,3).map(o=>o.date));
-
-    if (filterDate) {
-      all = all.filter(o => {
-        const orderDate = (o.date || '').trim();
-        return orderDate === filterDate;
-      });
-    }
-    if (filterSpiaggia) {
-      all = all.filter(o => (o.place || '').toLowerCase().includes(filterSpiaggia));
-    }
+    if (filterFrom) all = all.filter(o => (o.date || '') >= filterFrom);
+    if (filterTo) all = all.filter(o => (o.date || '') <= filterTo);
+    if (filterSpiaggia) all = all.filter(o => (o.place || '').toLowerCase().includes(filterSpiaggia));
 
     all.sort((a,b) => {
       if (a.date > b.date) return -1;
@@ -761,7 +793,8 @@ window.logout = function() {
 function applyRole() {
   document.getElementById('admin-date').value = currentDate;
   document.getElementById('admin-date-label').textContent = formatDate(currentDate);
-  document.getElementById('filter-date').value = currentDate;
+  document.getElementById('filter-date-from').value = currentDate;
+  document.getElementById('filter-date-to').value = currentDate;
   document.getElementById('rider-date-label').textContent = formatDate(today());
   if (currentRole === 'rider') {
     document.querySelectorAll('.nav-btn').forEach(b => b.style.display = 'none');
