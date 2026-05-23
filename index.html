@@ -222,14 +222,15 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
     <div class="filter-bar">
       <input type="date" id="filter-date" class="filter-input" onchange="renderReport()">
       <input type="text" id="filter-spiaggia" class="filter-input" placeholder="Filtra per spiaggia..." oninput="renderReport()">
+      <button class="btn-cancel" style="flex:0;padding:9px 14px;font-size:13px;white-space:nowrap;" onclick="resetFilters()">✕ Reset</button>
     </div>
     <div class="stats-grid" id="report-stats"></div>
-    <div class="section-title">Dettaglio ordini</div>
+    <div class="section-title">DETTAGLIO ORDINI</div>
     <table class="report-table">
       <thead><tr><th>Data</th><th>Orario</th><th>Spiaggia / Indirizzo</th><th>Importo</th></tr></thead>
       <tbody id="report-body"></tbody>
     </table>
-    <div class="section-title">Riepilogo per spiaggia</div>
+    <div class="section-title">RIEPILOGO PER SPIAGGIA</div>
     <table class="report-table">
       <thead><tr><th>Spiaggia</th><th>Ordini</th><th>Totale</th></tr></thead>
       <tbody id="report-spiagge"></tbody>
@@ -242,11 +243,11 @@ body { font-family: 'Georgia', serif; background: var(--sand-light); color: var(
     <div class="modal-title" id="modal-title">Nuovo ordine</div>
     <div class="form-group">
       <label class="form-label">Spiaggia / Indirizzo</label>
-      <input type="text" class="form-input" id="inp-place" placeholder="es. Spiaggia 42 o Via Roma 5">
+      <input type="text" class="form-input" id="inp-place" placeholder="es. Spiaggia 42 o Via Roma 5" onkeydown="if(event.key==='Enter')document.getElementById('inp-amount').focus()">
     </div>
     <div class="form-group">
       <label class="form-label">Importo (€)</label>
-      <input type="number" class="form-input" id="inp-amount" placeholder="0.00" step="0.01" min="0">
+      <input type="number" class="form-input" id="inp-amount" placeholder="0.00" step="0.01" min="0" onkeydown="if(event.key==='Enter')saveOrder()">
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Annulla</button>
@@ -493,21 +494,49 @@ function renderRider() {
   if (!found) container.innerHTML = '<div class="empty-state">Nessuna consegna per oggi</div>';
 }
 
+window.resetFilters = function() {
+  document.getElementById('filter-date').value = '';
+  document.getElementById('filter-spiaggia').value = '';
+  renderReport();
+};
+
 async function renderReport() {
-  const filterDate = document.getElementById('filter-date').value;
+  const filterDate = document.getElementById('filter-date').value.trim();
   const filterSpiaggia = document.getElementById('filter-spiaggia').value.toLowerCase().trim();
+
+  // Debug log
+  console.log('Filtro data:', filterDate, '| Filtro spiaggia:', filterSpiaggia);
+
   setSyncStatus('syncing');
   try {
     const snapshot = await getDocs(collection(db, 'orders'));
     let all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (filterDate) all = all.filter(o => o.date === filterDate);
-    if (filterSpiaggia) all = all.filter(o => o.place.toLowerCase().includes(filterSpiaggia));
-    all.sort((a,b) => a.date > b.date ? -1 : 1);
+
+    console.log('Totale ordini:', all.length, '| Esempi date:', all.slice(0,3).map(o=>o.date));
+
+    if (filterDate) {
+      all = all.filter(o => {
+        const orderDate = (o.date || '').trim();
+        return orderDate === filterDate;
+      });
+    }
+    if (filterSpiaggia) {
+      all = all.filter(o => (o.place || '').toLowerCase().includes(filterSpiaggia));
+    }
+
+    all.sort((a,b) => {
+      if (a.date > b.date) return -1;
+      if (a.date < b.date) return 1;
+      return SLOTS.indexOf(a.slot) - SLOTS.indexOf(b.slot);
+    });
+
     setSyncStatus('ok');
+
     const total = all.reduce((s,o) => s + parseFloat(o.amount||0), 0);
     document.getElementById('report-stats').innerHTML = `
       <div class="stat-card"><div class="stat-label">Ordini</div><div class="stat-val">${all.length}</div></div>
       <div class="stat-card"><div class="stat-label">Totale</div><div class="stat-val">€${total.toFixed(2)}</div></div>`;
+
     const tbody = document.getElementById('report-body');
     tbody.innerHTML = all.length === 0
       ? '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:1.5rem;">Nessun ordine trovato</td></tr>'
@@ -517,17 +546,23 @@ async function renderReport() {
           <td>${o.place}</td>
           <td class="amount-cell">€${parseFloat(o.amount||0).toFixed(2)}</td>
         </tr>`).join('');
+
     const byBeach = {};
     all.forEach(o => {
-      if (!byBeach[o.place]) byBeach[o.place] = { count: 0, total: 0 };
-      byBeach[o.place].count++;
-      byBeach[o.place].total += parseFloat(o.amount||0);
+      const key = (o.place || '').trim();
+      if (!byBeach[key]) byBeach[key] = { count: 0, total: 0 };
+      byBeach[key].count++;
+      byBeach[key].total += parseFloat(o.amount||0);
     });
     const entries = Object.entries(byBeach).sort((a,b) => b[1].total - a[1].total);
     document.getElementById('report-spiagge').innerHTML = entries.length === 0
       ? '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:1.5rem;">Nessun dato</td></tr>'
       : entries.map(([pl,d]) => `<tr><td>${pl}</td><td>${d.count}</td><td class="amount-cell">€${d.total.toFixed(2)}</td></tr>`).join('');
-  } catch(e) { setSyncStatus('error'); }
+
+  } catch(e) {
+    console.error('renderReport error:', e);
+    setSyncStatus('error');
+  }
 }
 
 window.openModal = function(slot) {
@@ -775,5 +810,3 @@ checkAuth();
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
 </html>
-
-
